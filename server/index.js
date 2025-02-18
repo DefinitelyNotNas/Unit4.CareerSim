@@ -106,7 +106,6 @@ const init = async () => {
 	await client.connect();
 	console.log(await fetchUsers());
 	console.log(await fetchProducts());
-	console.log(await fetchFavorites(moe.id));
 	console.log("connected to database");
 	app.listen(port, () => console.log(`listening on port ${port}`));
 };
