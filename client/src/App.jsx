@@ -56,7 +56,7 @@ function App() {
 
   useEffect(()=> {
     const fetchFavorites = async()=> {
-      const response = await fetch(`/api/users/${auth.id}/favorites`);
+      const response = await fetch(`/api/users/${auth.id}/favorites`); //error!
       const json = await response.json();
       if(response.ok){
         setFavorites(json);
