@@ -12,9 +12,9 @@ if (!secret) {
 
 const createTables = async () => {
 	const SQL = `
-    DROP TABLE IF EXISTS favorites;
-    DROP TABLE IF EXISTS users;
-    DROP TABLE IF EXISTS products;
+    DROP TABLE IF EXISTS favorites CASCADE;
+    DROP TABLE IF EXISTS products CASCADE;
+    DROP TABLE IF EXISTS users CASCADE;
     CREATE TABLE users(
       id UUID PRIMARY KEY,
       username VARCHAR(20) UNIQUE NOT NULL,
@@ -101,11 +101,12 @@ const authenticate = async ({ username, password }) => {
 		error.status = 401;
 		throw error;
 	}
-	const token = await jwt.sign({ id: response.rows[0].id }, secret);
+	const token = await jwt.sign({ id: response.rows[0].id }, secret, {
+		expiresIn: "24h",
+	});
 	return { token };
 };
 const findUserWithToken = async (token) => {
-	//problem here
 	try {
 		const payload = await jwt.verify(token, secret);
 		const SQL = `
@@ -121,7 +122,7 @@ const findUserWithToken = async (token) => {
 		return response.rows[0];
 	} catch (error) {
 		const err = Error("not authorized");
-		err.status(401);
+		err.status = 401;
 		throw err;
 	}
 };
@@ -150,8 +151,146 @@ const fetchFavorites = async (user_id) => {
 	return response.rows;
 };
 
+const isLoggedIn = async (req, res, next) => {
+	try {
+		const user = await findUserWithToken(req.headers.authorization);
+		req.user = user;
+		next();
+	} catch (ex) {
+		next(ex);
+	}
+};
+
+// Items functions
+const fetchItems = async () => {
+	const SQL = `SELECT * FROM items`;
+	const response = await client.query(SQL);
+	return response.rows;
+};
+
+const fetchItemById = async (itemId) => {
+	const SQL = `SELECT * FROM items WHERE id = $1`;
+	const response = await client.query(SQL, [itemId]);
+	return response.rows[0];
+};
+
+// Reviews functions
+const fetchReviewsByItem = async (itemId) => {
+	const SQL = `SELECT * FROM reviews WHERE item_id = $1`;
+	const response = await client.query(SQL, [itemId]);
+	return response.rows;
+};
+
+const fetchReviewById = async (reviewId) => {
+	const SQL = `SELECT * FROM reviews WHERE id = $1`;
+	const response = await client.query(SQL, [reviewId]);
+	return response.rows[0];
+};
+
+const createReview = async ({ itemId, userId, content, rating }) => {
+	const SQL = `
+	  INSERT INTO reviews(id, item_id, user_id, content, rating) 
+	  VALUES($1, $2, $3, $4, $5) 
+	  RETURNING *
+	`;
+	const response = await client.query(SQL, [
+		uuid.v4(),
+		itemId,
+		userId,
+		content,
+		rating,
+	]);
+	return response.rows[0];
+};
+
+const fetchUserReviews = async (userId) => {
+	const SQL = `SELECT * FROM reviews WHERE user_id = $1`;
+	const response = await client.query(SQL, [userId]);
+	return response.rows;
+};
+
+const updateReview = async ({
+	reviewId,
+	userId,
+	content,
+	rating,
+}) => {
+	const SQL = `
+	  UPDATE reviews 
+	  SET content = $1, rating = $2 
+	  WHERE id = $3 AND user_id = $4 
+	  RETURNING *
+	`;
+	const response = await client.query(SQL, [
+		content,
+		rating,
+		reviewId,
+		userId,
+	]);
+	return response.rows[0];
+};
+
+const deleteReview = async ({ reviewId, userId }) => {
+	const SQL = `DELETE FROM reviews WHERE id = $1 AND user_id = $2`;
+	await client.query(SQL, [reviewId, userId]);
+};
+
+// Comments functions
+const createComment = async ({ reviewId, userId, content }) => {
+	const SQL = `
+	  INSERT INTO comments(id, review_id, user_id, content) 
+	  VALUES($1, $2, $3, $4) 
+	  RETURNING *
+	`;
+	const response = await client.query(SQL, [
+		uuid.v4(),
+		reviewId,
+		userId,
+		content,
+	]);
+	return response.rows[0];
+};
+
+const fetchUserComments = async (userId) => {
+	const SQL = `SELECT * FROM comments WHERE user_id = $1`;
+	const response = await client.query(SQL, [userId]);
+	return response.rows;
+};
+
+const updateComment = async ({ commentId, userId, content }) => {
+	const SQL = `
+	  UPDATE comments 
+	  SET content = $1 
+	  WHERE id = $2 AND user_id = $3 
+	  RETURNING *
+	`;
+	const response = await client.query(SQL, [
+		content,
+		commentId,
+		userId,
+	]);
+	return response.rows[0];
+};
+
+const deleteComment = async ({ commentId, userId }) => {
+	const SQL = `DELETE FROM comments WHERE id = $1 AND user_id = $2`;
+	await client.query(SQL, [commentId, userId]);
+};
+
 module.exports = {
 	client,
+	fetchItems,
+	fetchItemById,
+	fetchReviewsByItem,
+	fetchReviewById,
+	createReview,
+	fetchUserReviews,
+	updateReview,
+	deleteReview,
+	createComment,
+	fetchUserComments,
+	updateComment,
+	deleteComment,
 	createTables,
 	createUser,
 	createProduct,
@@ -162,4 +301,5 @@ module.exports = {
 	destroyFavorite,
 	authenticate,
 	findUserWithToken,
+	isLoggedIn,
 };
